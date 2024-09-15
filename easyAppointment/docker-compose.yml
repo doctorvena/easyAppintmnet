@@ -1,0 +1,78 @@
+version: '3'
+services:
+
+  easyappointment-sql:
+    image: mcr.microsoft.com/mssql/server:2017-latest-ubuntu
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=QWElkj132!
+      - MSSQL_PID=Developer
+    ports:
+      - 1401:1433
+    expose:
+      - 1433
+    networks:
+      - easyappointmentnet2023
+    healthcheck:
+      test: [ "CMD", "/opt/mssql-tools/bin/sqlcmd", "-U", "sa", "-P", "QWElkj132!", "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  easyappointment-api:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: easyappointment/Dockerfile      
+    environment:
+      - ConnectionStrings:DefaultConnection=Server=easyappointment-sql,1433;Database=easyAppointmentDB;User=sa;Password=QWElkj132!;ConnectRetryCount=0; TrustServerCertificate=True
+      - ASPNETCORE_ENVIRONMENT=Development
+    ports:
+      - 4000:4000
+    depends_on:
+      easyappointment-sql:
+        condition: service_healthy
+    networks:
+      - easyappointmentnet2023
+    links:
+      - easyappointment-sql
+
+  rabbitmq:
+    image: "rabbitmq:management"
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    networks:
+      - easyappointmentnet2023
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  rabbitmqwebapi:
+    build: 
+      context: .
+      dockerfile: rabiitMqWebApi/Dockerfile
+    ports:
+      - 3000:3000
+    networks:
+      - easyappointmentnet2023
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - RabbitMq:HostName=rabbitmq
+      - RabbitMq:UserName=guest
+      - RabbitMq:Password=guest
+    links:
+      - rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+networks:
+  easyappointmentnet2023:
+    driver: bridge
